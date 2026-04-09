@@ -1,0 +1,66 @@
+const std = @import("std");
+
+const config = @import("../config.zig");
+const report = @import("../report.zig");
+const runner = @import("../runner.zig");
+const image_writer = @import("image_writer.zig");
+const registry = @import("../../noise/perlin/registry.zig");
+const hash = @import("../../core/shared/hash.zig");
+
+pub fn run_mode_i16(
+	comptime mode: registry.OptMode,
+	allocator: std.mem.Allocator,
+	stdout: anytype,
+	stderr: anytype,
+	comptime spec: registry.ModeSpec,
+	mode_str: []const u8,
+	warmup_chunk_count: u64,
+	benchmark_chunk_count: u64,
+	save_chunks_per_side: u64,
+) !void {
+	const mod = spec.module;
+	const alloc_alignment = comptime std.mem.Alignment.fromByteUnits(spec.required_alignment);
+
+	const values_buffer = try allocator.alignedAlloc(i16, alloc_alignment, config.SCALE);
+	defer allocator.free(values_buffer);
+
+	const smoothed_values_buffer = try allocator.alignedAlloc(i16, alloc_alignment, config.SCALE);
+	defer allocator.free(smoothed_values_buffer);
+
+	mod.perlin_prepare_cached_values(
+		values_buffer,
+		smoothed_values_buffer,
+		config.CHUNK_SIZE,
+		config.SCALE,
+	);
+
+	const seed_init = hash.rapidhashnano_init_seed(config.SEED);
+
+	const cs_usize: usize = @intCast(config.CHUNK_SIZE);
+	const chunk_buffer = try allocator.alignedAlloc(i16, alloc_alignment, cs_usize * cs_usize);
+	defer allocator.free(chunk_buffer);
+
+	try runner.run_warmup(mode, seed_init, values_buffer, smoothed_values_buffer, chunk_buffer, warmup_chunk_count);
+	const benchmark_result = try runner.run_benchmark_pass(mode, seed_init, values_buffer, smoothed_values_buffer, chunk_buffer, benchmark_chunk_count);
+
+	const total_points = benchmark_chunk_count * config.CHUNK_SIZE * config.CHUNK_SIZE;
+	try report.print_benchmark_report(
+		stdout,
+		benchmark_chunk_count,
+		total_points,
+		benchmark_result,
+	);
+
+	try image_writer.write_composite_image(
+		allocator,
+		stdout,
+		stderr,
+		mode,
+		seed_init,
+		values_buffer,
+		smoothed_values_buffer,
+		chunk_buffer,
+		mode_str,
+		save_chunks_per_side,
+	);
+}
