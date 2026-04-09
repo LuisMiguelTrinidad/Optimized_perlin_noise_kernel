@@ -1,4 +1,4 @@
-# 02_ZIG_Ruidos_pseudoaleatorios
+# Implementación de un kernel de ruido perlin optimizado
 
 Implementación y benchmark de ruido Perlin en Zig con cinco variantes de optimización: O0, O1, O2, O3 y O4.
 
